@@ -2,7 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import config from './config';
-import { errorHandler, notFoundHandler } from './middleware';
+import { errorHandler, notFoundHandler, apiLimiter, authLimiter } from './middleware';
 
 // Import routes
 import { authRoutes } from './modules/auth';
@@ -35,15 +35,21 @@ app.use(cors({
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Health check
+// Health check (no rate limiting)
 app.get('/health', (_req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
-// API routes
+// API routes with rate limiting
 const apiRouter = express.Router();
 
-apiRouter.use('/auth', authRoutes);
+// Apply general API rate limiter to all routes
+apiRouter.use(apiLimiter);
+
+// Apply stricter rate limiter to auth routes
+apiRouter.use('/auth', authLimiter, authRoutes);
+
+// Other routes with general rate limiter
 apiRouter.use('/tenants', tenantsRoutes);
 apiRouter.use('/lojas', lojasRoutes);
 apiRouter.use('/usuarios', usuariosRoutes);

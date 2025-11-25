@@ -9,3 +9,4 @@ export {
   ForbiddenError,
   ConflictError
 } from './errorHandler';
+export { apiLimiter, authLimiter, writeLimiter } from './rateLimiter';
