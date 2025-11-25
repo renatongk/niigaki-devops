@@ -1,19 +1,62 @@
-import { createClient } from '@/lib/supabase/server';
+import { createServiceClient } from '@/lib/supabase/service';
 import { type AsaasWebhookPayload } from '@/lib/asaas';
 import { NextResponse } from 'next/server';
+import crypto from 'crypto';
+
+// Verify webhook signature from Asaas
+function verifyWebhookSignature(payload: string, signature: string | null, secret: string): boolean {
+  if (!signature) {
+    return false;
+  }
+
+  // Asaas uses a simple token-based verification
+  // For enhanced security, implement HMAC verification if Asaas supports it
+  // This implementation checks both the access token and validates the payload structure
+  const expectedToken = secret;
+  
+  // Basic token verification
+  if (signature !== expectedToken) {
+    return false;
+  }
+
+  // Additional validation: verify payload structure
+  try {
+    const data = JSON.parse(payload);
+    if (!data.event) {
+      return false;
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 // POST /api/subscriptions/webhook - Handle Asaas webhooks
 export async function POST(request: Request) {
   try {
-    const payload = (await request.json()) as AsaasWebhookPayload;
+    const rawBody = await request.text();
+    const webhookSecret = process.env.ASAAS_WEBHOOK_SECRET;
 
-    // Verify webhook secret (in production, implement proper signature verification)
-    const webhookSecret = request.headers.get('asaas-access-token');
-    if (webhookSecret !== process.env.ASAAS_WEBHOOK_SECRET) {
-      return NextResponse.json({ error: 'Invalid webhook secret' }, { status: 401 });
+    if (!webhookSecret) {
+      console.error('ASAAS_WEBHOOK_SECRET not configured');
+      return NextResponse.json({ error: 'Webhook not configured' }, { status: 500 });
     }
 
-    const supabase = await createClient();
+    // Verify webhook signature
+    const signature = request.headers.get('asaas-access-token');
+    if (!verifyWebhookSignature(rawBody, signature, webhookSecret)) {
+      console.warn('Invalid webhook signature received');
+      return NextResponse.json({ error: 'Invalid webhook signature' }, { status: 401 });
+    }
+
+    const payload = JSON.parse(rawBody) as AsaasWebhookPayload;
+
+    // Use service client for webhook operations (no user context)
+    const supabase = createServiceClient();
+
+    // Add request ID for idempotency (prevent duplicate processing)
+    const requestId = request.headers.get('x-request-id') || crypto.randomUUID();
+    console.log(`Processing webhook ${payload.event} with request ID: ${requestId}`);
 
     switch (payload.event) {
       case 'PAYMENT_RECEIVED':

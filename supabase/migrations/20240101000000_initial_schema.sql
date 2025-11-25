@@ -401,16 +401,30 @@ ALTER TABLE subscriptions ENABLE ROW LEVEL SECURITY;
 -- Helper function to get current user's tenant_id
 CREATE OR REPLACE FUNCTION get_current_tenant_id()
 RETURNS UUID AS $$
+DECLARE
+    tenant UUID;
 BEGIN
-    RETURN (SELECT tenant_id FROM user_profiles WHERE id = auth.uid());
+    IF auth.uid() IS NULL THEN
+        RETURN NULL;
+    END IF;
+    
+    SELECT tenant_id INTO tenant FROM user_profiles WHERE id = auth.uid();
+    RETURN tenant;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
 -- Helper function to check if user is admin
 CREATE OR REPLACE FUNCTION is_tenant_admin()
 RETURNS BOOLEAN AS $$
+DECLARE
+    user_role VARCHAR(20);
 BEGIN
-    RETURN (SELECT role = 'admin' FROM user_profiles WHERE id = auth.uid());
+    IF auth.uid() IS NULL THEN
+        RETURN FALSE;
+    END IF;
+    
+    SELECT role INTO user_role FROM user_profiles WHERE id = auth.uid();
+    RETURN user_role = 'admin';
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 

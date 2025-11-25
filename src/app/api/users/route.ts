@@ -1,4 +1,5 @@
 import { createClient } from '@/lib/supabase/server';
+import { createServiceClient } from '@/lib/supabase/service';
 import { NextResponse } from 'next/server';
 
 // GET /api/users - List all users for the current tenant
@@ -37,6 +38,7 @@ export async function GET() {
 export async function POST(request: Request) {
   try {
     const supabase = await createClient();
+    const serviceClient = createServiceClient();
 
     const {
       data: { user },
@@ -64,8 +66,8 @@ export async function POST(request: Request) {
     const body = await request.json();
     const { email, name, role, store_id, password } = body;
 
-    // Create user in Supabase Auth
-    const { data: authData, error: authError } = await supabase.auth.admin.createUser({
+    // Create user in Supabase Auth using service client
+    const { data: authData, error: authError } = await serviceClient.auth.admin.createUser({
       email,
       password,
       email_confirm: true,
@@ -80,8 +82,8 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Failed to create user' }, { status: 400 });
     }
 
-    // Create user profile
-    const { data: profile, error: profileError } = await supabase
+    // Create user profile using service client
+    const { data: profile, error: profileError } = await serviceClient
       .from('user_profiles')
       .insert({
         id: authData.user.id,
@@ -97,7 +99,7 @@ export async function POST(request: Request) {
 
     if (profileError) {
       // Rollback: delete auth user
-      await supabase.auth.admin.deleteUser(authData.user.id);
+      await serviceClient.auth.admin.deleteUser(authData.user.id);
       return NextResponse.json({ error: profileError.message }, { status: 400 });
     }
 

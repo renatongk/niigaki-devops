@@ -1,4 +1,5 @@
 import { createClient } from '@/lib/supabase/server';
+import { createServiceClient } from '@/lib/supabase/service';
 import { NextResponse } from 'next/server';
 
 export async function POST(request: Request) {
@@ -6,6 +7,7 @@ export async function POST(request: Request) {
     const { email, password, name, tenantName, document } = await request.json();
 
     const supabase = await createClient();
+    const serviceClient = createServiceClient();
 
     // First, create the user in Supabase Auth
     const { data: authData, error: authError } = await supabase.auth.signUp({
@@ -26,8 +28,8 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Failed to create user' }, { status: 400 });
     }
 
-    // Create the tenant
-    const { data: tenantData, error: tenantError } = await supabase
+    // Create the tenant using service client (bypasses RLS for initial setup)
+    const { data: tenantData, error: tenantError } = await serviceClient
       .from('tenants')
       .insert({
         name: tenantName,
@@ -39,13 +41,13 @@ export async function POST(request: Request) {
       .single();
 
     if (tenantError) {
-      // Rollback: delete the auth user
-      await supabase.auth.admin.deleteUser(authData.user.id);
+      // Rollback: delete the auth user using service client
+      await serviceClient.auth.admin.deleteUser(authData.user.id);
       return NextResponse.json({ error: tenantError.message }, { status: 400 });
     }
 
-    // Create the user profile as admin
-    const { error: profileError } = await supabase.from('user_profiles').insert({
+    // Create the user profile as admin using service client
+    const { error: profileError } = await serviceClient.from('user_profiles').insert({
       id: authData.user.id,
       tenant_id: tenantData.id,
       email,
@@ -55,9 +57,9 @@ export async function POST(request: Request) {
     });
 
     if (profileError) {
-      // Rollback
-      await supabase.from('tenants').delete().eq('id', tenantData.id);
-      await supabase.auth.admin.deleteUser(authData.user.id);
+      // Rollback using service client
+      await serviceClient.from('tenants').delete().eq('id', tenantData.id);
+      await serviceClient.auth.admin.deleteUser(authData.user.id);
       return NextResponse.json({ error: profileError.message }, { status: 400 });
     }
 
